@@ -1,0 +1,268 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(ggmosaic)
+poll <-read.csv("~/(12Nov) 2024 exit poll data - MASTER.csv")%>%  mutate(Z_REPRESENT = recode(Z_REPRESENT,
+                              `1` = "BIDEN",
+                              `2` = "HARRIS",
+                              `3` = "SANDERS",
+                              `4` = "PHILLIPS",
+                              `5` = "OTHER",
+                              `6` = "TRUMP",
+                              `7` = "HALEY",
+                              `8` = "DESANTIS",
+                              `9` = "RFK_JR"), 
+                              B_PRES = recode(B_PRES, 
+                                              `1` = "TRUMP",
+                                              `2` = "HARRIS",
+                                              `3` = "OTHER"),
+                              C_HOUSE = recode(C_HOUSE, 
+                                               `1` = "TEIRAB",
+                                               `2` = "CRAIG",
+                                               `3` = "OTHER"),
+                              D_SENATE = recode(D_SENATE, 
+                                                `1` = "KLOBUCHAR",
+                                                `2` = "WHITE",
+                                                `3` = "OTHER"),
+                              F_PID = recode(F_PID, 
+                                             `1` = "STRONG DEM",
+                                             `2` = "LEAN DEM",
+                                             `3` = "INDEPENDENT",
+                                             `3.5` = "LEAN REP",
+                                             `4` = "LEAN REP",
+                                             `5` = "STRONG REP"))
+```
+
+Hypothesis A: A voter who prefers Biden, Trump, or Harris is less likely to split-ticket vote than a voter who prefers one of the other candidates. 
+
+Hypothesis B: Voters from more conservative precincts will have a higher ratio of Biden support to Harris support, relative to more suburban or urban districts. 
+RESULT: INSUFFICIENT DATA. Only five people preferred Biden. 
+
+Hypothesis C: Support for Biden/Harris and Trump in this survey will exceed the amount of support they got relative to their primary opponents (Dean Phillips / RFK / Other (Dem vote); Haley / DeSantis / Other (R vote)) in the 2024 primaries.
+
+#EDA
+
+```{r}
+#poll %>% select(Number, B_PRES, C_HOUSE, D_SENATE, Z_REPRESENT)
+
+# 5 Americans preferred one of the nominees but voted against him / her: 
+poll %>% filter(Z_REPRESENT == "HARRIS" | Z_REPRESENT == "BIDEN" | Z_REPRESENT == "TRUMP") %>% count(Z_REPRESENT, B_PRES)
+
+#Exploring this:
+#Wanted Trump, voted Harris
+poll %>% select(Number, B_PRES, C_HOUSE, D_SENATE, Z_REPRESENT, F_PID) %>% filter(Z_REPRESENT == "TRUMP" & B_PRES == "HARRIS" )
+```
+
+
+```{r}
+#Wanted Harris, voted Trump
+poll %>% select(Number, B_PRES, C_HOUSE, D_SENATE, Z_REPRESENT, F_PID) %>% filter(Z_REPRESENT == "HARRIS" & B_PRES == "TRUMP" )
+```
+
+```{r}
+#PID vs Represent
+poll %>% 
+  count(F_PID, Z_REPRESENT) %>% 
+  pivot_wider(values_from = n, names_from = F_PID) %>% 
+  mutate(across(2:7, ~replace_na(.x, 0))) %>% 
+  select(1, 5, 3, 2, 4, 6, 7) %>% 
+  mutate(RowSum = rowSums(across(-Z_REPRESENT))) %>%  
+  bind_rows(
+    summarise(
+      .,
+      Z_REPRESENT = "ColSum",
+      across(-Z_REPRESENT, sum)
+    )
+  )
+
+
+df <- df %>%
+  mutate(RowSum = rowSums(across(everything())))
+
+# Add column sums
+df <- df %>%
+  bind_rows(summarise(., across(everything(), sum))) %>%
+  mutate(RowSum = replace(RowSum, n(), sum(RowSum[-n()])))
+```
+
+
+```{r}
+poll %>% filter(Z_REPRESENT == "TRUMP") %>% count(B_PRES)
+
+poll %>% count()
+```
+Vote vs. Preference
+
+```{r}
+poll %>% count(Z_REPRESENT, B_PRES) %>% pivot_wider(names_from = B_PRES, values_from = n)
+```
+
+
+#Hypothesis A: Split-Ticket Voting
+
+```{r}
+#View of split vote rate by candidate
+poll %>% select(Number, B_PRES, C_HOUSE, D_SENATE, Z_REPRESENT, F_PID) %>% mutate(across(2:6, ~replace_na(.x, "NONE"))) %>%
+  mutate(DemVote = ifelse(B_PRES == "HARRIS" | C_HOUSE == "CRAIG" | D_SENATE == "KLOBUCHAR", 1, 0),
+         RepVote = ifelse(B_PRES == "TRUMP" | C_HOUSE == "TEIRAB" | D_SENATE == "WHITE", 1, 0),
+         SplitVote = DemVote * RepVote) %>% group_by(Z_REPRESENT) %>% summarise(SplitVote = mean(SplitVote), n = n())
+
+#View by Nominee vs Not Nominee
+SplTicket_poll <-poll %>% select(Number, B_PRES, C_HOUSE, D_SENATE, Z_REPRESENT, F_PID) %>% mutate(across(2:6, ~replace_na(.x, "NONE"))) %>%
+  mutate(PartyNominee = ifelse(Z_REPRESENT == "BIDEN" | Z_REPRESENT == "HARRIS" | Z_REPRESENT == "TRUMP", "Nominee", "Not_Nominee"),
+         DemVote = ifelse(B_PRES == "HARRIS" | C_HOUSE == "CRAIG" | D_SENATE == "KLOBUCHAR", 1, 0),
+         RepVote = ifelse(B_PRES == "TRUMP" | C_HOUSE == "TEIRAB" | D_SENATE == "WHITE", 1, 0),
+         Vote = ifelse(Z_REPRESENT == "BIDEN" | Z_REPRESENT == "HARRIS" | Z_REPRESENT == "SANDERS" | Z_REPRESENT == "PHILLIPS", "DEM",    
+                       ifelse(Z_REPRESENT == "TRUMP" | Z_REPRESENT == "HALEY" | Z_REPRESENT == "DESANTIS" | Z_REPRESENT == "RFK_JR", 
+                              "REP", "OTHER")),
+         SplitVote = DemVote * RepVote,
+         TicketStatus = ifelse(SplitVote == 1, "Split", "Straight"),
+         Vote_Nominee = paste0(Vote, "_", PartyNominee))
+
+SplTicket_poll %>% group_by(PartyNominee) %>% summarise(SplitVoteTotal = sum(SplitVote), SplitVoteRate = mean(SplitVote), n = n())
+SplTicket_poll %>% group_by(PartyNominee, Vote ) %>% summarise(SplitVoteTotal = sum(SplitVote), SplitVoteRate = mean(SplitVote), n = n())
+```
+
+
+```{r}
+SplTicket_poll %>%  ggplot() + geom_mosaic(aes(x =  product(Vote_Nominee), fill = TicketStatus)) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 15, hjust = 1)) + 
+  labs(title = "Split Ticket Voting by Party and Nominee Support",
+       x = "Party and Nominee Support",
+       y = "Ticket Voted",
+       fill = "Ticket Voted")
+      # caption = str_wrap("Across parties, split ticket voting occurred at higher rates among voters who self-reported representation by presidential candidates other than the eventual nominee. Additionally, split ticket voting occurred at higher rates among those who identified with Republican presidential candidates, compared to Democratic presidential candidates.", width = 80))
+  
+
+```
+
+```{r}
+Nom_Tick <-SplTicket_poll %>% filter(PartyNominee == "Nominee") %>% select(SplitVote)
+Not_Nom_Tick <-SplTicket_poll %>% filter(PartyNominee == "Not_Nominee") %>% select(SplitVote)
+
+t.test(Nom_Tick, Not_Nom_Tick, var.equal = TRUE, alternative = "less")
+```
+With a p-value of 0.0042, we reject the null hypothesis that the split ticket voting rate is identical for voters who preferred the party nominee, and voters who preferred a different candidate. Therefore, we have statistically significant evidence that there is a higher rate of split ticket voting among voters whose first choice for president was not the eventual nominee. 
+
+t-test by party:
+
+
+Dem: 
+```{r}
+Nom_Tick_Dem <-SplTicket_poll %>% filter(PartyNominee == "Nominee" & Vote == "DEM") %>% select(SplitVote)
+Not_Nom_Tick_Dem <-SplTicket_poll %>% filter(PartyNominee == "Not_Nominee" & Vote == "DEM") %>% select(SplitVote)
+
+t.test(Nom_Tick_Dem, Not_Nom_Tick_Dem, var.equal = TRUE, alternative = "less")
+```
+
+Rep:
+```{r}
+Nom_Tick_Rep <-SplTicket_poll %>% filter(PartyNominee == "Nominee" & Vote == "REP") %>% select(SplitVote)
+Not_Nom_Tick_Rep <-SplTicket_poll %>% filter(PartyNominee == "Not_Nominee" & Vote == "REP") %>% select(SplitVote)
+
+t.test(Nom_Tick_Rep, Not_Nom_Tick_Rep, var.equal = TRUE, alternative = "less")
+```
+
+
+
+#Hypothesis C: Biden/Harris and Trump have *more* support among their voters than in primary. 
+
+##Harris / Biden
+
+Statewide Primary results: Biden 171278/244281 (70.1%); Trump 232848/337014 (68.94%)
+MN-02 Primary Results: Biden 19404 / 27043 (71.75%); Trump 31035/46462 (66.80%)
+
+
+I realised that my question was not worded super well, so I will include those who voted for the presidential nominee, as well as leaners / strong partisans. 
+
+```{r}
+DEM_C1 <-poll %>% filter(B_PRES == "HARRIS" | F_PID == "STRONG DEM" | F_PID == "LEAN DEM") %>% 
+  mutate(across(c(4:6 | 38), ~replace_na(.x, "NONE"))) %>% 
+  mutate(Support_Nominee = ifelse(Z_REPRESENT == "BIDEN" | Z_REPRESENT == "HARRIS", 1, 0)) %>% 
+  summarise(Party = "DEM", n=n(), Vote_Total = sum(B_PRES == "HARRIS"), Vote_Prop = mean(B_PRES == "HARRIS"), Prefer_Total = sum(Support_Nominee), Prefer_Prop = mean(Support_Nominee)) %>% as.tibble()
+
+
+GOP_C1 <-poll %>% filter(B_PRES == "TRUMP" | F_PID == "STRONG REP" | F_PID == "LEAN REP") %>% 
+  mutate(across(c(4:6 | 38), ~replace_na(.x, "NONE"))) %>% 
+  mutate(Support_Nominee = ifelse(Z_REPRESENT == "TRUMP", 1, 0)) %>% 
+  summarise(Party = "GOP", n=n(), Vote_Total = sum(B_PRES == "TRUMP"), Vote_Prop = mean(B_PRES == "TRUMP"), Prefer_Total = sum(Support_Nominee), Prefer_Prop = mean(Support_Nominee)) %>% as.tibble()
+
+C1 <-bind_rows(DEM_C1, GOP_C1)
+C1
+```
+
+
+TESTS:
+  Harris-Biden:
+```{r}
+    t.test(x = c(rep(1, 223), rep(0, 349-223)),
+       y = c(rep(1, 19404), rep(0, 27043 - 19404)),
+       var.equal = FALSE)
+```
+Poll: 223/349 = 63.9%
+Primary: 19404/27043 = 71.75%
+p-value:  0.00259
+
+  Trump:
+```{r}
+    t.test(x = c(rep(1, 148), rep(0, 277-148)),
+       y = c(rep(1, 31035), rep(0, 46462-31035)),
+       var.equal = FALSE)
+```
+Poll: 148/277 = 53.4%
+Primary:31035/46462 = 66.80%
+p-value: 1.297e-05
+
+#Hypothesis C recalculation
+
+We are now going to re-calculate the statistics, regarding just the responses for Preference, and assuming party based on this alone. We are assuming a supporter of Sanders, Harris, Biden, or Phillips is a Democrat, and one of RFK, Trump, Haley, or DeSantis is a Republican. We are not considering anyone who answered "Other", or failed to answer the Representation question. 
+
+
+Biden/Harris: 
+```{r}
+DEM_C2 <-poll %>% filter(Z_REPRESENT == "HARRIS" | Z_REPRESENT == "BIDEN" | Z_REPRESENT == "SANDERS" | Z_REPRESENT == "PHILLIPS") %>% mutate(isBidenHarris = Z_REPRESENT == "BIDEN" | Z_REPRESENT == "HARRIS") %>% summarise(Candidate = "HARRIS",  n = n(), VoteTotal = sum(isBidenHarris), VoteProp = mean(isBidenHarris), PrimarySupport = 19404 / 27043)
+DEM_C2
+
+ t.test(x = c(rep(1, 224), rep(0, 275-223)),
+       y = c(rep(1, 19404), rep(0, 27043 - 19404)),
+       var.equal = FALSE)
+```
+Poll: 224/275 = 81.5%%
+Primary: 19404/27043 = 71.75%
+p-value:  9.391e-05
+
+Trump: 
+```{r}
+GOP_C2 <-poll %>% filter(Z_REPRESENT == "TRUMP" | Z_REPRESENT == "DESANTIS" | Z_REPRESENT == "HALEY" | Z_REPRESENT == "RFK_JR") %>% mutate(isTrump = Z_REPRESENT == "TRUMP") %>% summarise(Candidate = "TRUMP",  n = n(), VoteTotal = sum(isTrump), VoteProp = mean(isTrump), PrimarySupport = 31035 / 46462)
+GOP_C2
+
+t.test(x = c(rep(1, 149), rep(0, 241-148)),
+        y = c(rep(1, 31035), rep(0, 46462-31035)),
+       var.equal = FALSE)
+```
+Poll: 149/241 = 61.8%
+Primary: 31035/46462 = 66.80%
+p-value:  0.09742
+
+```{r}
+C2 <- bind_rows(DEM_C2, GOP_C2)
+C2
+C2 %>% rename("Election Day Support" = VoteProp, "Primary Support" = PrimarySupport) %>% pivot_longer(values_to = "Proportion", names_to = "Category", cols = 4:5) %>% ggplot(aes(x = Candidate, y = Proportion, fill = Category)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Harris and Trump Intraparty Support in General vs Primary",
+       subtitle = "Comparing candidates' rates of support on Election Day and Super Tuesday",
+       x = "Candidate",
+       y = "Proportion", 
+       caption = "In the 2024 US Presidential Election, Harris received a significantly larger proportion of the votes in MN-02 \n among individuals who indicated a preference for a Democratic President (a proxy of partisan affiliation), \n than Biden received among registered Democrats in the Super Tuesday Democratic Primary. \n Conversely, Trump received noticeably, although not significantly, less support among Election Day\n voters who wanted a Republican President, compared to his level of support on Super Tuesday.") +
+  #scale_fill_manual(values = c("Vote" = "skyblue", "Support" = "salmon")) +
+  theme(plot.title = element_text(hjust = 0.5),
+         plot.caption = element_text(size = 9, color = "black", hjust = 0.5))
+```
+
+
+First calculation of Hypothesis C showed that both candidates had significantly lower rates of support on Election Day than in the primary; the second calculation method showed marked improvement for both candidates; Harris performs significantly better on Election Day than Biden on Super Tuesday, while Trump remains significantly worse [this is to be expected, as Trump had a much more competitive primary than Biden did]. Therefore, our hypothesis is rejected. 
