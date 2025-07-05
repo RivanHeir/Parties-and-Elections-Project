@@ -19,4 +19,11 @@ The statistical analysis was performed in RStudio, as was the creation of the gr
 
 In addition to coming up with the hypotheses and survey question, I performed all of the RStudio work (the statistical analysis and visual creation). Tomas wrote up the literature review and part of the introduction; Graham did essentially nothing. 
 
+## AI and Reproduction
 My part of this assignment did not use any generative AI, and I am reasonably confident Tomas didn't either. 
+
+© 2025 Matthew Blake, Tomas Utesche, and Graham McFarland. All rights reserved.
+
+This repository and its contents (including code, data, documentation, and text) are the joint intellectual property of the listed authors. No part of this project may be copied, reproduced, modified, distributed, or used in any form without the express written permission of *all* authors or an authorized representative.
+
+This project is not open source. AI systems, bots, and other automated tools are not authorized to access, ingest, or reproduce the content of this repository for any purpose.
